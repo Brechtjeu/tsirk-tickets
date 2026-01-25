@@ -1,0 +1,208 @@
+:root {
+    --primary-blue: #05152a;
+    --accent-gold: #d4af37;
+    --text-white: #ffffff;
+    --ticket-bg: rgba(5, 21, 42, 0.85);
+    --border-gold: 1px solid #d4af37;
+}
+
+body {
+    background-color: var(--primary-blue);
+    color: var(--text-white);
+    font-family: 'Roboto', sans-serif;
+    /* Fallback to sans-serif */
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+/* Background Handling */
+.poster-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    /* Gradient overlay + image if we used one, pure color for now as per minimal assets */
+    background: radial-gradient(circle at center, #0a2a50 0%, #05152a 100%);
+    z-index: -1;
+}
+
+/* Typography */
+.main-title {
+    font-weight: 900;
+    font-size: 3rem;
+    letter-spacing: 0.1em;
+    color: var(--text-white);
+    text-transform: uppercase;
+    text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+}
+
+.sub-title {
+    font-weight: 300;
+    letter-spacing: 0.2rem;
+    margin-top: 10px;
+}
+
+.text-gold {
+    color: var(--accent-gold) !important;
+}
+
+/* Input Fields */
+.form-control {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--accent-gold);
+    color: white !important;
+}
+
+.form-control:focus {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-color: #fff;
+    box-shadow: 0 0 5px var(--accent-gold);
+}
+
+/* Buttons */
+.btn-gold {
+    background-color: var(--accent-gold);
+    color: var(--primary-blue);
+    font-weight: bold;
+    border: none;
+    transition: all 0.3s ease;
+}
+
+.btn-gold:hover {
+    background-color: #f0c445;
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.6);
+}
+
+/* Cards */
+.show-card {
+    background: var(--ticket-bg);
+    border: var(--border-gold);
+    border-radius: 8px;
+    padding: 20px;
+    transition: transform 0.2s;
+}
+
+.show-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+.h-100 {
+    height: 100%;
+}
+
+/* Custom Counter Input */
+.counter-group {
+    background-color: white;
+    border-radius: 5px;
+    overflow: hidden;
+    width: 100%;
+    max-width: 200px;
+    margin: 0 auto;
+    /* Center it */
+}
+
+.btn-counter {
+    border: none;
+    color: white;
+    font-weight: bold;
+    font-size: 1.2rem;
+    width: 40px;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.btn-dec {
+    background-color: #d9534f;
+    /* Red */
+}
+
+.btn-dec:hover {
+    background-color: #c9302c;
+}
+
+.btn-inc {
+    background-color: #5cb85c;
+    /* Green */
+}
+
+.btn-inc:hover {
+    background-color: #449d44;
+}
+
+.input-counter {
+    border: none !important;
+    background-color: white !important;
+    color: #333 !important;
+    /* Dark text for contrast against white */
+    border-radius: 0 !important;
+    height: 100%;
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.input-counter:focus {
+    box-shadow: none !important;
+    background-color: white !important;
+}
+
+/* Hide spin buttons in regex-capable browsers */
+.input-counter::-webkit-outer-spin-button,
+.input-counter::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.input-counter {
+    -moz-appearance: textfield;
+}
+
+/* Utilities */
+.bg-dark-transparent {
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.opacity-25 {
+    opacity: 0.25;
+}
+
+.glow {
+    text-shadow: 0 0 15px #d4af37;
+    transition: all 0.3s ease;
+}
+
+.fixed-bottom {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+}
+
+.bg-primary-blue {
+    background-color: var(--primary-blue);
+}
+
+/* Test Page Styles */
+.show-selection-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.show-selection-card:hover {
+    transform: translateY(-5px);
+}
+
+.show-selected {
+    background-color: rgba(212, 175, 55, 0.15) !important;
+    border-width: 2px !important;
+}
+
+.opacity-50 {
+    opacity: 0.5;
+}
