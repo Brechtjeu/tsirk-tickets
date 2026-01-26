@@ -198,10 +198,68 @@ def update_input_value(n_dec, n_inc, current_val):
         
     return dash.no_update
 
-@callback(
+# Client-side callback for Payment
+dash.clientside_callback(
+    """
+    function(n_clicks, cart_data) {
+        if (!n_clicks || n_clicks === 0) {
+            return window.dash_clientside.no_update;
+        }
+        
+        // Basic Validation: Check if cart is empty
+        var hasItems = false;
+        if (cart_data) {
+            for (var show in cart_data) {
+                if (cart_data[show].large > 0 || cart_data[show].small > 0) {
+                    hasItems = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!hasItems) {
+            return "Winkelmandje is leeg!";
+        }
+
+        console.log("Initiating payment...", cart_data);
+        
+        fetch('/config')
+            .then((result) => result.json())
+            .then((data) => {
+                const stripe = Stripe(data.publicKey);
+                
+                fetch('/create-checkout-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(cart_data),
+                })
+                .then((result) => result.json())
+                .then((session) => {
+                    console.log("Session created:", session);
+                    if (session.error) {
+                         console.error(session.error);
+                         return "Error: " + session.error;
+                    }
+                    return stripe.redirectToCheckout({ sessionId: session.sessionId });
+                })
+                .then((res) => {
+                    if (res && res.error) {
+                        console.error(res.error);
+                    }
+                })
+                .catch((err) => {
+                    console.error("Error:", err);
+                });
+            });
+            
+        return "Redirecting naar betaalpagina...";
+    }
+    """,
     Output("pay-status", "children"),
     Input("pay-btn", "n_clicks"),
+    State("cart-store", "data"),
     prevent_initial_call=True
 )
-def on_pay(n):
-    return "Redirecting naar betaling... (Demo)"
+

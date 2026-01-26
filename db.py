@@ -1,0 +1,42 @@
+from flask_sqlalchemy import SQLAlchemy
+import random
+import string
+
+db = SQLAlchemy()
+
+# Define the CheckoutSession model
+class CheckoutSession(db.Model):
+    __tablename__ = 'checkout_sessions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.String, unique=True, nullable=False)
+    status = db.Column(db.String, nullable=False)
+    type = db.Column(db.String, nullable=False)
+    payment_status = db.Column(db.String, nullable=False)
+    email = db.Column(db.String, nullable=True)
+    access_codes = db.relationship('AccessCode', backref='checkout_session', lazy=True)
+
+def generate_unique_code():
+    return ''.join(random.choices(string.ascii_uppercase, k=6))
+
+# Define the AccessCode model
+class AccessCode(db.Model):
+    __tablename__ = 'access_codes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(6), unique=True, nullable=False, default=generate_unique_code)
+    is_valid = db.Column(db.Boolean, default=True)
+    type = db.Column(db.String, nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('checkout_sessions.id'), nullable=False)
+
+def init_db(app):
+    """
+    Initialize the database with the given Flask app.
+    """
+    print("init_db")
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tsirk_tickets.db'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    db.init_app(app)
+
+    with app.app_context():
+        db.create_all()
