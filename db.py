@@ -1,6 +1,9 @@
 from flask_sqlalchemy import SQLAlchemy
 import random
 import string
+import logging
+
+logger = logging.getLogger(__name__)
 
 db = SQLAlchemy()
 
@@ -33,7 +36,7 @@ def init_db(app):
     """
     Initialize the database with the given Flask app.
     """
-    print("init_db")
+    logger.info("Initializing Database")
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tsirk_tickets.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)

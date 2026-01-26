@@ -6,15 +6,19 @@ from pprint import pprint
 from dotenv import load_dotenv
 import os
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Configure API key authorization: api-key
 configuration = brevo_python.Configuration()
 
 key = os.getenv('BREVO_API_KEY')
 if key == None:
-    print("BREVO_API_KEY not found in environment variables")
+    logger.warning("BREVO_API_KEY not found in environment variables")
     load_dotenv()
     key = os.getenv('BREVO_API_KEY')
-    print("key", key)
+    logger.debug(f"Loaded key: {key[:5]}...") # Log partial key for debug
 configuration.api_key['api-key'] = key
 
 def send_email(download_link, to_email, to_name):
@@ -252,10 +256,12 @@ def send_email(download_link, to_email, to_name):
 
     try:
         # Send a transactional email
+        logger.info(f"Sending email to {to_email}")
         api_response = api_instance.send_transac_email(send_smtp_email)
-        pprint(api_response)
+        logger.info(f"Email sent successfully. MessageId: {api_response.message_id}")
+        # pprint(api_response)
     except ApiException as e:
-        print("Exception when calling TransactionalEmailsApi->send_transac_email: %s\n" % e)
+        logger.error(f"Exception when calling TransactionalEmailsApi->send_transac_email: {e}")
 
 if __name__ == "__main__":
     send_email(

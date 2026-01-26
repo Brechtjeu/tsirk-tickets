@@ -2,6 +2,19 @@ import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 import os
+import logging
+from dotenv import load_dotenv
+
+# Load Environment Variables
+load_dotenv()
+DEBUG_MODE = os.getenv("DEBUG", "False").lower() == "true"
+
+# Configure Logging
+logging.basicConfig(
+    level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Initialize the app with Bootstrap for grid system
 app = dash.Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], external_scripts = ['https://js.stripe.com/v3/'])
@@ -33,4 +46,5 @@ app.layout = html.Div([
 ])
 
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0')
+    logger.info(f"Starting app in {'DEBUG' if DEBUG_MODE else 'PRODUCTION'} mode")
+    app.run(debug=DEBUG_MODE, host='0.0.0.0')

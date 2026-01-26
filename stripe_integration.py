@@ -1,6 +1,7 @@
 import os
 import json
 import stripe
+import logging
 from flask import jsonify, request, current_app
 from threading import Thread
 from time import sleep
@@ -8,6 +9,8 @@ from db import db, CheckoutSession, AccessCode, generate_unique_code
 from tickets import generate_ticket_image
 from mail import send_email
 from pages.salespage import SHOWS, PRICES
+
+logger = logging.getLogger(__name__)
 
 # Setup Stripe
 stripe_keys = {
@@ -34,7 +37,7 @@ def register_stripe_routes(server):
 
         try:
             data = json.loads(request.data)
-            # Data structure: {'s1': {'large': 2, 'small': 1}, 's2': ...}
+            logger.info(f"Creating checkout session with data: {data}")
             
             line_items = []
             max_prev_large = 0
@@ -124,6 +127,7 @@ def register_stripe_routes(server):
                     })
             
             if not line_items:
+                logger.warning("No tickets selected for checkout request")
                 return jsonify({'error': 'No tickets selected'}), 400
 
             checkout_session = stripe.checkout.Session.create(
@@ -133,8 +137,10 @@ def register_stripe_routes(server):
                 mode='payment',
                 line_items=line_items
             )
+            logger.info(f"Checkout Session created: {checkout_session['id']}")
             return jsonify({'sessionId': checkout_session['id']})
         except Exception as e:
+            logger.error(f"Error creating checkout session: {e}", exc_info=True)
             return jsonify(error=str(e)), 403
 
     @server.route('/get_tickets', methods=['GET'])
@@ -146,17 +152,22 @@ def register_stripe_routes(server):
         session = CheckoutSession.query.filter_by(session_id=session_id).first()
         if not session:
              # Session might not be saved yet if hook is slow
+             logger.debug(f"/get_tickets - Poll for session {session_id[:8]}... Not found yet")
              return jsonify({"codes": []})
         
         # Check if AccessCodes are generated
         access_codes = session.access_codes
         codes_list = [code.code for code in access_codes]
         
+        if len(codes_list) > 0:
+             logger.debug(f"/get_tickets - Poll for session {session_id[:8]}... Found {len(codes_list)} tickets")
+        
         return jsonify({"codes": codes_list})
 
 
     @server.route('/success-hook', methods=['POST'])
     def success_hook():
+        logger.info("Received Stripe Webhook")
         payload = request.get_data()
         sig_header = request.headers.get('Stripe-Signature')
         event = None
@@ -168,19 +179,17 @@ def register_stripe_routes(server):
             data = json.loads(payload)
             event = stripe.Event.construct_from(data, stripe.api_key)
         except ValueError as e:
+            logger.error(f"Invalid Webhook payload: {e}")
             return "Invalid payload", 400
 
         if event['type'] == 'checkout.session.completed':
+            logger.info("Webhook event type: checkout.session.completed")
             # Run fulfillment in background
-            # We need to pass app context or create it inside the thread
-            # Standard threading with Flask context is tricky.
-            # We will grab the necessary data and pass it.
-            # Note: SQLite with threads can be finicky.
-            # Check previous code: it created a thread with target=fulfill_order.
-            
             # Passing app to thread to create context
             thread = Thread(target=fulfill_order, args=(event, current_app._get_current_object()))
             thread.start()
+        else:
+            logger.info(f"Unhandled webhook event type: {event['type']}")
 
         return '', 200
 
@@ -192,10 +201,10 @@ def fulfill_order(event, app):
         session_id = event["data"]["object"]["id"]
         # Avoid duplicate processing
         if CheckoutSession.query.filter_by(session_id=session_id).first():
-            print(f"Session {session_id} already processed.")
+            logger.info(f"Session {session_id} already processed. Skipping.")
             return
 
-        print(f"Processing session {session_id}")
+        logger.info(f"Processing fulfillment for session {session_id}")
         
         session = stripe.checkout.Session.retrieve(session_id)
         line_items = stripe.checkout.Session.list_line_items(session_id)
@@ -211,6 +220,7 @@ def fulfill_order(event, app):
         )
         db.session.add(new_session)
         db.session.commit() # Commit to get ID
+        logger.info(f"Saved CheckoutSession to DB")
         
         # 2. Generate Access Codes & Tickets
         for item in line_items["data"]:
@@ -232,14 +242,9 @@ def fulfill_order(event, app):
                 )
                 db.session.add(access_code)
                 
-                # Generate Image (assuming tickets.py has this function)
-                # We need to extract show info from description or just pass the code?
-                # tickets.generate_ticket_image expects (unique_id, shownumber, date, time)
-                # We can parse the description string or pass defaults. 
-                # For now, we'll try to parse or hardcode placeholders if parsing fails,
-                # to ensure the file is generated.
-                # Description format: "... - SHOW X (TIME)"
+                logger.debug(f"Generated ticket code: {code} for item: {description}")
                 
+                # Generate Image logic
                 # Simplified parsing logic for demo:
                 shownumber = 1
                 if "SHOW 2" in description: shownumber = 2
@@ -252,13 +257,18 @@ def fulfill_order(event, app):
                 date = 28
                 if "29/" in description or "SHOW 3" in description: date = 29
                 
-                generate_ticket_image(code, shownumber, date, time_str)
+                try:
+                    generate_ticket_image(code, shownumber, date, time_str)
+                    logger.debug(f"Generated ticket image for {code}")
+                except Exception as e:
+                    logger.error(f"Failed to generate ticket image for {code}: {e}", exc_info=True)
         
         db.session.commit()
+        logger.info("All tickets generated and saved to DB")
         
         # 3. Send Email
         try:
              send_email(f"https://tickets.tsirk.be/success?session_id={session_id}", email, email)
-             print(f"Email sent to {email}")
+             logger.info(f"Success email sent to {email}")
         except Exception as e:
-            print(f"Failed to send email: {e}")
+            logger.error(f"Failed to send email to {email}: {e}", exc_info=True)
