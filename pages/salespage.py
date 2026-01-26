@@ -3,7 +3,7 @@ from dash import html, dcc, callback, Input, Output, State, ALL, MATCH
 import dash_bootstrap_components as dbc
 import json
 
-dash.register_page(__name__, path='/ticket-multi')
+dash.register_page(__name__, path='/')
 
 # Data Configuration
 SHOWS = [
@@ -48,7 +48,7 @@ def create_show_card(show):
 
 layout = dbc.Container([
     html.Div([
-        html.H4("HET GETOUW - 28 EN 29 MAART 2026", className="text-center mb-4 text-white-50"),
+        html.H4("'T GETOUW - 28 EN 29 MAART 2026", className="text-center mb-4 text-white-50"),
     ]),
 
     # Pricing Info

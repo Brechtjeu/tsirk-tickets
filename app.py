@@ -2,9 +2,16 @@ import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
+import stripe
+from flask import Flask, jsonify, request, render_template
+
+
+
 # Initialize the app with Bootstrap for grid system
-app = dash.Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP])
+app = dash.Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], external_scripts = ['https://js.stripe.com/v3/'])
 server = app.server
+app.title = "Tickets Show 2026"
+
 
 app.layout = html.Div([
     dcc.Store(id="cart-store", storage_type="session", data={}),
@@ -28,6 +35,30 @@ app.layout = html.Div([
         ])
     ])
 ])
+
+
+# ------------------------------------------------------------------------------
+#  ____ _____ ____  ___ ____  _____ 
+# / ___|_   _|  _ \|_ _|  _ \| ____|
+# \___ \ | | | |_) || || |_) |  _|  
+#  ___) || | |  _ < | ||  __/| |___ 
+# |____/ |_| |_| \_\___|_|   |_____|
+# ------------------------------------------------------------------------------
+
+
+stripe_keys = {
+    'secret_key': os.environ['STRIPE_SECRET_KEY'],
+    'publishable_key': os.environ['STRIPE_PUBLISHABLE_KEY'],
+}
+stripe.api_key = stripe_keys['secret_key']
+
+@server.route('/config')
+def config():
+    stripe_config = {'publicKey': stripe_keys['publishable_key']}
+    return jsonify(stripe_config)
+
+
+
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0')
