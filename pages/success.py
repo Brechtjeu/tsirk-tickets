@@ -12,7 +12,7 @@ layout = dbc.Container([
     
     html.Div([
         html.H1("BETALING SUCCESVOL!", className="text-gold text-center mb-4"),
-        html.P("Bedankt voor je aankoop. We maken je tickets nu klaar...", className="text-white text-center mb-4"),
+        html.P("Bedankt voor je aankoop. Tot op de show!", className="text-white text-center mb-4"),
         
         # Loading Indicator
         html.Div(id='loading-spinner', children=[

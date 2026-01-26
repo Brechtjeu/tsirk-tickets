@@ -5,6 +5,9 @@ import random
 import string
 import os
 
+# Get the directory where this script is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def generate_ticket_image(unique_id, shownumber, date, time):
     # Create a QR code
     link="tickets.tsirk.be/ticket?id="
@@ -18,7 +21,7 @@ def generate_ticket_image(unique_id, shownumber, date, time):
     qr_image.save(qr_file)
 
     # Open the template image
-    template = Image.open("ticket-template.jpg").convert("RGBA")
+    template = Image.open(os.path.join(SCRIPT_DIR, "ticket-template.jpg")).convert("RGBA")
 
     # Open the QR code image
     qr_image = Image.open(qr_file).convert("RGBA")
@@ -27,8 +30,9 @@ def generate_ticket_image(unique_id, shownumber, date, time):
     template.paste(qr_image, (350, 640), qr_image)
 
     # Load the font
-    font = ImageFont.truetype("fonts/Rubik-light.ttf", size=30)
-    font_bold = ImageFont.truetype("fonts/Rubik-bold.ttf", size=35)
+    print(os.path.join(SCRIPT_DIR, "fonts/Rubik-Light.ttf"))
+    font = ImageFont.truetype(os.path.join(SCRIPT_DIR, "fonts/Rubik-Light.ttf"), size=30)
+    font_bold = ImageFont.truetype(os.path.join(SCRIPT_DIR, "fonts/Rubik-Bold.ttf"), size=35)
 
     # Create a drawing context
     draw = ImageDraw.Draw(template)
@@ -42,10 +46,10 @@ def generate_ticket_image(unique_id, shownumber, date, time):
     # final_image = template.resize((template.width // 2, template.height // 2), Image.Resampling.LANCZOS)
     final_image = template
 
-    output_dir = "assets/tickets"
+    output_dir = os.path.join(SCRIPT_DIR, "assets/tickets")
     os.makedirs(output_dir, exist_ok=True)
     # Save the halved image as a JPEG
-    output_file_jpeg = f"{output_dir}/{unique_id}.jpeg"
+    output_file_jpeg = os.path.join(output_dir, f"{unique_id}.jpeg")
     final_image.convert("RGB").save(output_file_jpeg, "JPEG")
 
     # # Save the final image with the UUID as the name

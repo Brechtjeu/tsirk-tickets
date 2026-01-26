@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    # command: bash -c 'while !</dev/tcp/db/5432; do sleep 1; done; gunicorn --bind 0.0.0.0:8000 config.wsgi'
+    # command: bash -c 'ls'
+    command: bash -c 'python app.py'
+    expose:
+      - 5000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tsirk-tickets-flask.rule=Host(`tickets.tsirk.be`)"
+      - "traefik.http.routers.tsirk-tickets-flask.tls=true"
+      - "traefik.http.routers.tsirk-tickets-flask.tls.certresolver=letsencrypt"
+    networks:
+      - proxynet
+    volumes:
+      - .:/home/code/web
+    user: "${UID}:${GID}"
+    env_file:
+      - .env
+
+volumes:
+  postgres_data_prod:
+
+networks:
+  proxynet:
+    name: traefik_network

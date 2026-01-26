@@ -32,19 +32,27 @@ register_stripe_routes(server)
 
 app.layout = html.Div([
     dcc.Store(id="cart-store", storage_type="session", data={}),
-    dbc.NavbarSimple(
-        children=[
-            dbc.NavItem(dbc.NavLink("Home", href="/")),
-            dbc.NavItem(dbc.NavLink("Winkelmandje", href="/cart")),
-        ],
-        brand="Tickets 't Sirk 2026",
-        brand_href="/",
-        color="primary",
-        dark=True,
-    ),
-    dash.page_container
+    # Background Image Container
+    html.Div(className="poster-bg"),
+    
+    # Overlay for readability
+    html.Div(className="content-overlay", children=[
+        # Navigation / Header area
+        html.Div([
+            html.H1("SHOW 'T SIRK VINDT UIT!", className="main-title text-center mb-0"),
+            html.H3("EEN LEUKE VOORSTELLING", className="sub-title text-center text-gold"),
+        ], className="header-section py-4"),
+
+        # Page Container
+        dash.page_container,
+        
+        # Footer
+        html.Footer([
+            html.P("WWW.TSIRK.BE", className="text-center text-muted small mt-5")
+        ])
+    ])
 ])
 
 if __name__ == "__main__":
     logger.info(f"Starting app in {'DEBUG' if DEBUG_MODE else 'PRODUCTION'} mode")
-    app.run(debug=DEBUG_MODE, host='0.0.0.0')
+    app.run(debug=DEBUG_MODE, host='0.0.0.0', port=5000)

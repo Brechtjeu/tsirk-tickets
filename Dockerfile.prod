@@ -1,0 +1,38 @@
+# app/Dockerfile.prod
+
+# pull official base image
+FROM python:3.11-slim
+
+# create directory for the app user
+RUN mkdir -p /home/code
+
+# create the app user with specific uid and gid
+RUN addgroup --system app && adduser --system app
+
+# create the appropriate directories
+ENV HOME=/home/code
+ENV APP_HOME=/home/code/web
+RUN mkdir $APP_HOME
+WORKDIR $APP_HOME
+
+# set environment variables
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc
+
+# lint
+RUN pip install --upgrade pip
+
+# install python dependencies
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# copy project
+COPY . $APP_HOME
+
+# chown all the files to the app user
+RUN chown -R app:app $APP_HOME && \
+    chmod -R u+w $APP_HOME
