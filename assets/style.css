@@ -215,3 +215,7 @@ body {
 .opacity-50 {
     opacity: 0.5;
 }
+
+.text-dark {
+    color: #000000 !important;
+}

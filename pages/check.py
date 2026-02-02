@@ -233,8 +233,14 @@ dash.clientside_callback(
                 // Success
                 console.log(`Code matched = ${decodedText}`, decodedResult);
                 
+                // Use last 6 chars only (User Request)
+                let finalCode = decodedText;
+                if (finalCode.length > 6) {
+                    finalCode = finalCode.slice(-6);
+                }
+                
                 // Set value to input and click check
-                document.getElementById("manual-code-input").value = decodedText;
+                document.getElementById("manual-code-input").value = finalCode;
                 document.getElementById("btn-check-code").click();
                 
                 // Optional: Stop on success? Maybe keep running for group?
