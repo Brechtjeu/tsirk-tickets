@@ -71,60 +71,59 @@ def check_login(n, password):
     [Input("btn-check-code", "n_clicks"),
      Input({"type": "btn-checkin", "code": ALL}, "n_clicks"),
      Input({"type": "btn-checkin-all", "session": ALL}, "n_clicks"),
-     Input("manual-code-input", "n_submit")], # Allow Enter key
-    [State("manual-code-input", "value"),
-     State("scan-result-area", "children")], 
+     Input("manual-code-input", "n_submit")], 
+    [State("manual-code-input", "value")], 
     prevent_initial_call=True
 )
-def handle_check_action(n_check, n_checkin, n_checkin_all, n_sub, code_val, current_children):
+def handle_check_action(n_check, n_checkin, n_checkin_all, n_sub, code_val):
     ctx = dash.callback_context
     if not ctx.triggered: return dash.no_update
     
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
     # 1. Check Logic (Manual or Scan)
-    # Scan is handled via filling the input and clicking the button via JS, so logic is same
     if trigger_id == "btn-check-code" or trigger_id == "manual-code-input":
-        code = code_val.strip().upper() if code_val else ""
-        if len(code) > 6: # Handle URL paste
-            if "id=" in code:
-                code = code.split("id=")[1][:6]
-        
-        return render_scan_result(code)
+        return process_scan_or_manual(code_val)
 
     # 2. Check-In Individual Ticket
     if "btn-checkin" in trigger_id and "btn-checkin-all" not in trigger_id:
-        # Parse code from dict ID
         import json
         t_id = json.loads(trigger_id)
-        target_code = t_id['code']
-        
-        ticket = AccessCode.query.filter_by(code=target_code).first()
-        if ticket:
-            ticket.scanned_at = datetime.now()
-            db.session.commit()
-            
-            # Refresh the view for the SAME group (find the session)
-            # Find any ticket from the group -> get session -> refresh
-            return render_scan_result(target_code) # Rerender will show updated status
+        return process_checkin(t_id['code'])
 
     # 3. Check-In ALL Valid
     if "btn-checkin-all" in trigger_id:
         import json
         t_id = json.loads(trigger_id)
-        session_id = t_id['session'] # This is db ID
-        
-        session = CheckoutSession.query.get(session_id)
-        if session:
-            for t in session.access_codes:
-                if t.is_valid and not t.scanned_at:
-                    t.scanned_at = datetime.now()
-            db.session.commit()
-            
-            # Refresh view. Use first code from session to trigger render
-            if session.access_codes:
-                return render_scan_result(session.access_codes[0].code)
+        return process_checkin_all(t_id['session'])
 
+    return dash.no_update
+
+def process_scan_or_manual(code_val):
+    code = code_val.strip().upper() if code_val else ""
+    if len(code) > 6: # Handle URL paste
+        if "id=" in code:
+            code = code.split("id=")[1][:6]
+    return render_scan_result(code)
+
+def process_checkin(target_code):
+    ticket = AccessCode.query.filter_by(code=target_code).first()
+    if ticket:
+        ticket.scanned_at = datetime.now()
+        db.session.commit()
+        return render_scan_result(target_code)
+    return dash.no_update
+
+def process_checkin_all(session_id):
+    session = CheckoutSession.query.get(session_id)
+    if session:
+        for t in session.access_codes:
+            if t.is_valid and not t.scanned_at:
+                t.scanned_at = datetime.now()
+        db.session.commit()
+        
+        if session.access_codes:
+            return render_scan_result(session.access_codes[0].code)
     return dash.no_update
 
 def render_scan_result(code):
@@ -216,35 +215,45 @@ dash.clientside_callback(
     function(n_clicks) {
         if (n_clicks) {
             if (window.html5QrCode) {
-                // Stop if running
                 window.html5QrCode.stop().then(() => {
                     console.log("Stopped existing scanner");
-                }).catch(err => {
-                    // Ignore stop error
-                });
+                }).catch(err => {});
             }
             
             const html5QrCode = new Html5Qrcode("reader");
             window.html5QrCode = html5QrCode;
+            window.lastScanTime = 0; // Initialize cooldown
             
             const config = { fps: 10, qrbox: { width: 250, height: 250 } };
             
             html5QrCode.start({ facingMode: "environment" }, config, (decodedText, decodedResult) => {
-                // Success
+                // Success Callback
+                const now = Date.now();
+                if (now - window.lastScanTime < 5000) {
+                     console.log("Ignored scan due to cooldown");
+                     return;
+                }
+                
+                window.lastScanTime = now;
                 console.log(`Code matched = ${decodedText}`, decodedResult);
                 
-                // Use last 6 chars only (User Request)
+                // Use last 6 chars only
                 let finalCode = decodedText;
                 if (finalCode.length > 6) {
                     finalCode = finalCode.slice(-6);
                 }
                 
-                // Set value to input and click check
-                document.getElementById("manual-code-input").value = finalCode;
+                // Set value using property descriptor to support React
+                const input = document.getElementById("manual-code-input");
+                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                nativeInputValueSetter.call(input, finalCode);
+                
+                // Dispatch input event for Dash/React to pick it up
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                
+                // Click the button
                 document.getElementById("btn-check-code").click();
                 
-                // Optional: Stop on success? Maybe keep running for group?
-                // html5QrCode.stop();
             }, (errorMessage) => {
                 // parse error, ignore
             })
