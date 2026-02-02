@@ -118,18 +118,19 @@ def update_dashboard(style, n_clicks, n_intervals):
     total_tix = len(tickets)
 
     # 3. Sales Over Time (Line Chart)
-    # Group by Date
-    sales_by_date = defaultdict(float)
+    # Group by Date and Hour
+    sales_by_time = defaultdict(float)
     for s in sessions:
         if s.created_at and s.amount_total:
-            date_str = s.created_at.strftime('%Y-%m-%d')
-            sales_by_date[date_str] += (s.amount_total / 100)
+            # Group by hour
+            time_str = s.created_at.strftime('%Y-%m-%d %H:00')
+            sales_by_time[time_str] += (s.amount_total / 100)
     
-    sorted_dates = sorted(sales_by_date.keys())
-    revenues = [sales_by_date[d] for d in sorted_dates]
+    sorted_times = sorted(sales_by_time.keys())
+    revenues = [sales_by_time[t] for t in sorted_times]
 
-    fig_time = go.Figure(data=go.Scatter(x=sorted_dates, y=revenues, mode='lines+markers', name='Revenue'))
-    fig_time.update_layout(title="Revenue per Day", xaxis_title="Date", yaxis_title="Revenue (€)", template="plotly_white")
+    fig_time = go.Figure(data=go.Scatter(x=sorted_times, y=revenues, mode='lines+markers', name='Revenue'))
+    fig_time.update_layout(title="Revenue over Time (Hourly)", xaxis_title="Time", yaxis_title="Revenue (€)", template="plotly_white")
 
     # 4. Sales by Show (Bar Chart) & Ticket Types
     # Parse descriptions: "GROOT (>12j) - SHOW 1 (13u30)"
