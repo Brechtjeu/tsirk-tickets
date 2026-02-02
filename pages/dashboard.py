@@ -50,7 +50,7 @@ layout = html.Div([
                      dbc.Card([
                         dbc.CardHeader("Manual Ticket Activation (UitPas)"),
                         dbc.CardBody([
-                            dbc.Input(id="ticket-code-input", placeholder="Enter Ticket Code", className="mb-2"),
+                            dbc.Input(id="ticket-code-input", placeholder="Enter Ticket Code", className="mb-2 text-dark"),
                             dbc.Button("Toggle Validity", id="btn-toggle-valid", color="warning", className="mb-2"),
                             html.Div(id="ticket-status-output", className="text-info")
                         ])
