@@ -24,7 +24,7 @@ configuration.api_key['api-key'] = key
 def send_email(download_link, to_email, to_name):
     # create an instance of the API class
     api_instance = brevo_python.TransactionalEmailsApi(brevo_python.ApiClient(configuration))
-    subject = "Welkom aan boord bij de show van 't Sirk!"
+    subject = "Welkom bij de nieuwste uitvinding van 't Sirk!"
     sender = {"name":"'t Sirk'","email":"show@tsirk.be"}
     reply_to = {"name":"'t Sirk'","email":"show@tsirk.be"}
     # HTML bericht
