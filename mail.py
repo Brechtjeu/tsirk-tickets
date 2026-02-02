@@ -160,13 +160,13 @@ def send_email(download_link, to_email, to_name):
                                 Luchtacro beginners Retie<br>
                                 Kleuters<br>
                                 Eenwieler training<br>
-                                Gastoptreden</td>
+                                Gastoptreden - Roodknapje</td>
                         </tr>
                         <tr>
                             <td>PAUZE</td>
                         </tr>
                         <tr>
-                            <td>Multi 1<br>
+                            <td>Multi 2 Mol<br>
                                 Acro 1<br>
                                 Evenwicht<br>
                                 Luchtacro experts Mol</td>
@@ -190,7 +190,7 @@ def send_email(download_link, to_email, to_name):
                                 Luchtacro gevorderden Mol<br>
                                 Multi Retie<br>
                                 Eenwieler basket<br>
-                                Gastoptreden
+                                Gastoptreden - N.E.L.
                             </td>
                         </tr>
                         <tr>
@@ -221,8 +221,8 @@ def send_email(download_link, to_email, to_name):
                             <td>
                                 Opening<br>
                                 Luchtacro beginners Mol<br>
-                                Kleuter-ouder<br>
-                                Multi+<br>
+                                Kleuter-oudercircus<br>
+                                Multi+ Mol<br>
                                 Gastoptreden: Amuze
                             </td>
                         </tr>
@@ -232,7 +232,7 @@ def send_email(download_link, to_email, to_name):
                         <tr> 
                             <td>
                                 Luchtacro volwassenen<br>
-                                Multi 1<br>
+                                Multi 1 Mol<br>
                                 Eenwieler beginners<br>
                                 Luchtacro gevorderden Retie
                             </td>
