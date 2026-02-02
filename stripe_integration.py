@@ -217,6 +217,7 @@ def fulfill_order(event, app):
             type=event["type"],
             payment_status=event["data"]["object"]["payment_status"],
             email=email,
+            amount_total=session.get('amount_total'),
         )
         db.session.add(new_session)
         db.session.commit() # Commit to get ID

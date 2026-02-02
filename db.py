@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 import random
 import string
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,8 @@ class CheckoutSession(db.Model):
     type = db.Column(db.String, nullable=False)
     payment_status = db.Column(db.String, nullable=False)
     email = db.Column(db.String, nullable=True)
+    amount_total = db.Column(db.Integer, nullable=True) # In cents
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     access_codes = db.relationship('AccessCode', backref='checkout_session', lazy=True)
 
 def generate_unique_code():
