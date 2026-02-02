@@ -17,7 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize the app with Bootstrap for grid system
-app = dash.Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], external_scripts = ['https://js.stripe.com/v3/'])
+app = dash.Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], external_scripts = ['https://js.stripe.com/v3/', 'https://unpkg.com/html5-qrcode'])
 server = app.server
 app.title = "Tickets Show 2026"
 

@@ -35,6 +35,7 @@ class AccessCode(db.Model):
     type = db.Column(db.String, nullable=False)
     session_id = db.Column(db.Integer, db.ForeignKey('checkout_sessions.id'), nullable=False)
     uitpas_number = db.Column(db.String, nullable=True)
+    scanned_at = db.Column(db.DateTime, nullable=True)
 
 def init_db(app):
     """
