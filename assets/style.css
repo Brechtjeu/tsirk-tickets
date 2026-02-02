@@ -61,6 +61,15 @@ body {
     box-shadow: 0 0 5px var(--accent-gold);
 }
 
+.uitpas-input {
+    color: #e0e0e0 !important;
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.uitpas-input::placeholder {
+    color: #aaaaaa !important;
+}
+
 /* Buttons */
 .btn-gold {
     background-color: var(--accent-gold);
