@@ -7,7 +7,7 @@ from threading import Thread
 from time import sleep
 from db import db, CheckoutSession, AccessCode, generate_unique_code
 from tickets import generate_ticket_image
-from mail import send_email
+from mail import send_email, send_admin_notification
 from pages.salespage import SHOWS, PRICES
 
 logger = logging.getLogger(__name__)
@@ -36,8 +36,16 @@ def register_stripe_routes(server):
            domain_url = 'http://localhost:5000' # For local testing
 
         try:
-            data = json.loads(request.data)
-            logger.info(f"Creating checkout session with data: {data}")
+            payload = json.loads(request.data)
+            # Support both old format (direct cart) and new format (cart + uitpas)
+            if 'cart' in payload:
+                data = payload['cart']
+                uitpas_cards = payload.get('uitpas', [])
+            else:
+                data = payload
+                uitpas_cards = []
+
+            logger.info(f"Creating checkout session. Cart: {data.keys()}, UitPas: {len(uitpas_cards)}")
             
             line_items = []
             max_prev_large = 0
@@ -56,15 +64,60 @@ def register_stripe_routes(server):
                 n_large = int(s_data.get('large', 0))
                 n_small = int(s_data.get('small', 0))
                 
-                # --- Calculate Large Tickets ---
+                # --- Calculates & UitPas Logic ---
+                # UitPas logic: 1 Card discounts 1 ticket of [type] in THIS show.
+                # Find matching cards
+                uitpas_large = [c for c in uitpas_cards if c['type'] == 'large']
+                uitpas_small = [c for c in uitpas_cards if c['type'] == 'small']
+                
+                # Allocate UitPas to tickets
+                n_large_uitpas = min(n_large, len(uitpas_large))
+                n_small_uitpas = min(n_small, len(uitpas_small))
+                
+                # Remaining for standard pricing
+                rem_large = n_large - n_large_uitpas
+                rem_small = n_small - n_small_uitpas
+                
+                # --- Generate Line Items for UitPas Large ---
+                for i in range(n_large_uitpas):
+                    card = uitpas_large[i] # Just take first available, logic matches count
+                    line_items.append({
+                        'price_data': {
+                            'currency': 'eur',
+                            'product_data': {
+                                'name': f"GROOT (>12j) [UiTPAS] - {show['name']} ({show['time']})",
+                                'metadata': {'show_id': sid, 'type': 'large', 'variant': 'uitpas', 'uitpas_number': card['number']}
+                            },
+                            'unit_amount': int(PRICES['large'] * 0.2 * 100), # 20% of price
+                        },
+                        'quantity': 1,
+                    })
+
+                # --- Generate Line Items for UitPas Small ---
+                for i in range(n_small_uitpas):
+                    card = uitpas_small[i]
+                    line_items.append({
+                        'price_data': {
+                            'currency': 'eur',
+                            'product_data': {
+                                'name': f"KLEIN (-12j) [UiTPAS] - {show['name']} ({show['time']})",
+                                'metadata': {'show_id': sid, 'type': 'small', 'variant': 'uitpas', 'uitpas_number': card['number']}
+                            },
+                            'unit_amount': int(PRICES['small'] * 0.2 * 100), # 20% of price
+                        },
+                        'quantity': 1,
+                    })
+
+                # --- Calculate Standard Large Tickets ---
                 disc_slots_large = max_prev_large
-                n_large_disc = min(n_large, disc_slots_large)
-                n_large_full = n_large - n_large_disc
+                n_large_disc = min(rem_large, disc_slots_large)
+                n_large_full = rem_large - n_large_disc
                 
                 # Update history
-                max_prev_large = max(max_prev_large, n_large)
-                
-                # Add Large Line Items
+                # Note: Do UitPas tickets count towards history for volume discount?
+                # Usually yes, "Total tickets previously bought".
+                max_prev_large = max(max_prev_large, n_large) 
+
                 if n_large_full > 0:
                     line_items.append({
                         'price_data': {
@@ -91,15 +144,14 @@ def register_stripe_routes(server):
                         'quantity': n_large_disc,
                     })
 
-                # --- Calculate Small Tickets ---
+                # --- Calculate Standard Small Tickets ---
                 disc_slots_small = max_prev_small
-                n_small_disc = min(n_small, disc_slots_small)
-                n_small_full = n_small - n_small_disc
+                n_small_disc = min(rem_small, disc_slots_small)
+                n_small_full = rem_small - n_small_disc
                 
                 # Update history
                 max_prev_small = max(max_prev_small, n_small)
                 
-                # Add Small Line Items
                 if n_small_full > 0:
                     line_items.append({
                         'price_data': {
@@ -157,6 +209,13 @@ def register_stripe_routes(server):
         
         # Check if AccessCodes are generated
         access_codes = session.access_codes
+        
+        # NOTE: We DO NOT show INVALID (UitPas) tickets here, or we do?
+        # Requirement: "send an email with the codes...".
+        # But for the user success page, usually we show them. However, if they are invalid, maybe mark them?
+        # For simplicity, returning all codes but they are technically invalid.
+        # User will see them on success page.
+        
         codes_list = [code.code for code in access_codes]
         
         if len(codes_list) > 0:
@@ -207,7 +266,7 @@ def fulfill_order(event, app):
         logger.info(f"Processing fulfillment for session {session_id}")
         
         session = stripe.checkout.Session.retrieve(session_id)
-        line_items = stripe.checkout.Session.list_line_items(session_id)
+        line_items = stripe.checkout.Session.list_line_items(session_id, expand=['data.price.product'])
         email = event["data"]["object"].get("customer_details", {}).get("email")
 
         # 1. Save Checkout Session
@@ -224,9 +283,20 @@ def fulfill_order(event, app):
         logger.info(f"Saved CheckoutSession to DB")
         
         # 2. Generate Access Codes & Tickets
+        uitpas_notifications = [] # List of tuples (code, number, description)
+        
         for item in line_items["data"]:
             description = item["description"] # e.g. "Volwassen Ticket - SHOW 1..."
             quantity = item["quantity"]
+            
+            # Check metadata from Product
+            # Stripe API: line_items.data[i].price.product.metadata
+            product_metadata = item.get("price", {}).get("product", {}).get("metadata", {})
+            uitpas_number = product_metadata.get("uitpas_number")
+            is_valid = True
+            
+            if uitpas_number:
+                is_valid = False
             
             for _ in range(quantity):
                 # Retry loop for unique code (though collision probability is low)
@@ -237,13 +307,21 @@ def fulfill_order(event, app):
                 
                 access_code = AccessCode(
                     code=code,
-                    is_valid=True,
+                    is_valid=is_valid,
                     type=description,
-                    checkout_session=new_session
+                    checkout_session=new_session,
+                    uitpas_number=uitpas_number
                 )
                 db.session.add(access_code)
                 
-                logger.debug(f"Generated ticket code: {code} for item: {description}")
+                if uitpas_number:
+                    uitpas_notifications.append({
+                        "code": code,
+                        "number": uitpas_number,
+                        "desc": description
+                    })
+                
+                logger.debug(f"Generated ticket code: {code} (Valid: {is_valid}) for item: {description}")
                 
                 # Generate Image logic
                 # Simplified parsing logic for demo:
@@ -273,3 +351,11 @@ def fulfill_order(event, app):
              logger.info(f"Success email sent to {email}")
         except Exception as e:
             logger.error(f"Failed to send email to {email}: {e}", exc_info=True)
+
+        # 4. Admin Notification for UitPas
+        if uitpas_notifications:
+            try:
+                send_admin_notification(session_id, email, uitpas_notifications)
+                logger.info(f"Admin notification sent for UitPas tickets")
+            except Exception as e:
+                logger.error(f"Failed to send admin notification: {e}", exc_info=True)

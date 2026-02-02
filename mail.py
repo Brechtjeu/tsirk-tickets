@@ -269,3 +269,36 @@ if __name__ == "__main__":
         to_email="vanroybrecht@gmail.com",
         to_name="Brecht Van Roy"
     )
+
+def send_admin_notification(session_id, customer_email, uitpas_items):
+    api_instance = brevo_python.TransactionalEmailsApi(brevo_python.ApiClient(configuration))
+    subject = f"ACTION REQUIRED: UitPas Tickets Verification ({session_id[:8]})"
+    sender = {"name":"'t Sirk Sales","email":"noreply@tsirk.be"}
+    to = [{"email":"show@tsirk.be", "name":"Ticket Admin"}]
+    
+    items_html = ""
+    for item in uitpas_items:
+        items_html += f"<li><strong>{item['number']}</strong>: {item['desc']} (Code: {item['code']})</li>"
+
+    html_content = f'''
+    <html>
+    <body>
+        <h2>Nieuwe UitPas Bestelling die verificatie vereist</h2>
+        <p><strong>Klant Email:</strong> {customer_email}</p>
+        <p><strong>Sessie ID:</strong> {session_id}</p>
+        <h3>UitPas Nummers te controleren:</h3>
+        <ul>
+            {items_html}
+        </ul>
+        <p>Controleer deze nummers in de UitPas database. Indien geldig, activeer de tickets via het dashboard.</p>
+    </body>
+    </html>
+    '''
+
+    send_smtp_email = brevo_python.SendSmtpEmail(to=to, html_content=html_content, sender=sender, subject=subject)
+
+    try:
+        logger.info(f"Sending admin notification for session {session_id}")
+        api_instance.send_transac_email(send_smtp_email)
+    except ApiException as e:
+        logger.error(f"Exception when calling send_admin_notification: {e}")

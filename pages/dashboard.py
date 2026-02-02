@@ -44,6 +44,26 @@ layout = html.Div([
                 ], className="mb-4"), width=12, md=6),
             ]),
 
+            # Ticket Activation Section
+            dbc.Row([
+                dbc.Col([
+                     dbc.Card([
+                        dbc.CardHeader("Manual Ticket Activation (UitPas)"),
+                        dbc.CardBody([
+                            dbc.Input(id="ticket-code-input", placeholder="Enter Ticket Code", className="mb-2"),
+                            dbc.Button("Toggle Validity", id="btn-toggle-valid", color="warning", className="mb-2"),
+                            html.Div(id="ticket-status-output", className="text-info")
+                        ])
+                    ], className="mb-4")
+                ], width=12, md=6),
+                 dbc.Col([
+                     dbc.Card([
+                        dbc.CardHeader("Invalid UitPas Tickets (Action Required)"),
+                        dbc.CardBody(html.Div(id="invalid-tickets-list"))
+                    ], className="mb-4")
+                ], width=12, md=6),
+            ]),
+
             # Charts
             dbc.Row([
                 dbc.Col([
@@ -93,18 +113,39 @@ def login(n_clicks, password):
         return {'display': 'block'}, {'display': 'none'}, "Incorrect Password"
 
 @callback(
+    Output("ticket-status-output", "children"),
+    Input("btn-toggle-valid", "n_clicks"),
+    State("ticket-code-input", "value"),
+    prevent_initial_call=True
+)
+def toggle_validity(n_clicks, code):
+    if not code: return "Please enter a code"
+    
+    ticket = AccessCode.query.filter_by(code=code).first()
+    if not ticket:
+        return f"Ticket {code} not found."
+    
+    ticket.is_valid = not ticket.is_valid
+    db.session.commit()
+    
+    status = "VALID" if ticket.is_valid else "INVALID"
+    return f"Ticket {code} is now {status}."
+
+@callback(
     [Output("total-revenue", "children"),
      Output("total-tickets", "children"),
      Output("sales-over-time-chart", "figure"),
      Output("ticket-types-chart", "figure"),
-     Output("sales-by-show-chart", "figure")],
+     Output("sales-by-show-chart", "figure"),
+     Output("invalid-tickets-list", "children")],
     [Input("dashboard-content", "style"),
      Input("refresh-btn", "n_clicks"),
-     Input("auto-refresh", "n_intervals")]
+     Input("auto-refresh", "n_intervals"),
+     Input("btn-toggle-valid", "n_clicks")] # Update list when valid toggled
 )
-def update_dashboard(style, n_clicks, n_intervals):
+def update_dashboard(style, n_clicks, n_intervals, n_toggle):
     if style and style.get('display') == 'none':
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     # Fetch Data
     sessions = CheckoutSession.query.filter_by(payment_status='paid').all()
@@ -161,4 +202,23 @@ def update_dashboard(style, n_clicks, n_intervals):
     fig_types = go.Figure(data=[go.Pie(labels=list(type_counts.keys()), values=list(type_counts.values()), hole=.3)])
     fig_types.update_layout(title="Ticket Distribution", template="plotly_white")
 
-    return total_rev, str(total_tix), fig_time, fig_types, fig_shows
+    # 5. Invalid Tickets List
+    invalid_tickets = AccessCode.query.filter_by(is_valid=False).all()
+    if not invalid_tickets:
+        invalid_list = html.P("No invalid tickets found.", className="text-success")
+    else:
+        # Create Table
+        rows = []
+        for t in invalid_tickets:
+            rows.append(html.Tr([
+                html.Td(t.code),
+                html.Td(t.uitpas_number or "-"),
+                html.Td(t.type)
+            ]))
+        
+        invalid_list = dbc.Table([
+            html.Thead(html.Tr([html.Th("Code"), html.Th("UitPas"), html.Th("Desc")])),
+            html.Tbody(rows)
+        ], striped=True, bordered=True, hover=True, size="sm")
+
+    return total_rev, str(total_tix), fig_time, fig_types, fig_shows, invalid_list

@@ -2,6 +2,7 @@ import dash
 from dash import html, dcc, callback, Input, Output, State, ALL, MATCH
 import dash_bootstrap_components as dbc
 import json
+import copy
 
 dash.register_page(__name__, path='/')
 
@@ -71,6 +72,38 @@ layout = dbc.Container([
     
     dbc.Row([create_show_card(s) for s in SHOWS], className="mb-5"),
     
+    # UitPas Section
+    html.Div([
+        html.Hr(className="border-gold"),
+        html.H3("UITPAS MET KANSENTARIEF", className="text-gold mb-3"),
+        html.P("Heb je een UiTPAS met kansentarief? Dan krijg je korting op je ticket. Opgelet: deze tickets zijn enkel geldig op vertoon van een geldige UiTPAS met kansentarief aan de kassa.", className="text-white small mb-3"),
+        
+        dbc.Row([
+            dbc.Col([
+                dbc.Input(id="uitpas-input", placeholder="UiTPAS Nummer (13 cijfers)", type="text", maxLength=13, className="uitpas-input"),
+            ], width=12, md=4, className="mb-2"),
+            dbc.Col([
+                dbc.RadioItems(
+                    options=[
+                        {"label": "Grote Uitvinder", "value": "large"},
+                        {"label": "Kleine Uitvinder", "value": "small"},
+                    ],
+                    value="large",
+                    id="uitpas-type-input",
+                    inline=True,
+                    className="text-white"
+                ),
+            ], width=12, md=4, className="mb-2 d-flex align-items-center"),
+            dbc.Col([
+                dbc.Button("Toevoegen", id="btn-add-uitpas", color="primary", className="w-100"),
+            ], width=12, md=2, className="mb-2"),
+        ], className="align-items-center"),
+        html.Div(id="uitpas-error", className="text-danger mt-2"),
+        html.Div(id="uitpas-list", className="mt-3"),
+        dcc.Store(id="uitpas-store", data=[]), # Stores list of {number: '...', type: '...'}
+    ], className="container pb-4"),
+
+
     # Cart / Summary
     html.Div([
         html.Hr(className="border-gold"),
@@ -87,6 +120,72 @@ layout = dbc.Container([
         ])
     ], className="container pb-5")
 ])
+
+# Callback: Add/Remove UitPas
+@callback(
+    [Output("uitpas-store", "data"),
+     Output("uitpas-input", "value"),
+     Output("uitpas-error", "children")],
+    [Input("btn-add-uitpas", "n_clicks"),
+     Input({"type": "btn-remove-uitpas", "index": ALL}, "n_clicks")],
+    [State("uitpas-input", "value"),
+     State("uitpas-type-input", "value"),
+     State("uitpas-store", "data")],
+    prevent_initial_call=True
+)
+def manage_uitpas(n_add, n_remove, number, ticket_type, current_data):
+    ctx = dash.callback_context
+    if not ctx.triggered: return dash.no_update, dash.no_update, dash.no_update
+    
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    if trigger_id == "btn-add-uitpas":
+        if not number or len(number) != 13 or not number.isdigit():
+            return dash.no_update, dash.no_update, "Ongeldig UiTPAS nummer (moet 13 cijfers zijn)"
+        
+        # Check duplicate
+        if any(c['number'] == number for c in current_data):
+             return dash.no_update, dash.no_update, "Dit nummer is al toegevoegd"
+
+        new_data = current_data + [{"number": number, "type": ticket_type}]
+        return new_data, "", ""
+    
+    elif "btn-remove-uitpas" in trigger_id:
+        # trigger_id is JSON string like {"index":0,"type":"btn-remove-uitpas"}
+        # But we rely on dash context logic usually. 
+        # Since we use pattern matching, we can find which index triggered.
+        # But for list removal, it's safer to reconstruct.
+        
+        # Simple approach: find the one that wasn't None? 
+        # n_remove is a list of n_clicks. Find index of non-zero/changed?
+        # Actually easier: simpler to just use the index from the ID if possible, 
+        # but Dash gives us 'index' in the dict.
+        
+        trigger_obj = json.loads(trigger_id)
+        idx_to_remove = trigger_obj['index']
+        
+        if 0 <= idx_to_remove < len(current_data):
+            new_data = [d for i, d in enumerate(current_data) if i != idx_to_remove]
+            return new_data, dash.no_update, ""
+            
+    return dash.no_update, dash.no_update, ""
+
+# Callback: Render UitPas List
+@callback(
+    Output("uitpas-list", "children"),
+    Input("uitpas-store", "data")
+)
+def render_uitpas_list(data):
+    if not data: return []
+    
+    items = []
+    for i, card in enumerate(data):
+        label_type = "Grote Uitvinder" if card['type'] == 'large' else "Kleine Uitvinder"
+        items.append(dbc.Row([
+            dbc.Col(f"{card['number']} - {label_type}", className="text-white"),
+            dbc.Col(dbc.Button("Verwijder", id={"type": "btn-remove-uitpas", "index": i}, color="danger", size="sm"), width="auto")
+        ], className="mb-2 align-items-center"))
+    return items
 
 # Callback 1: UI Inputs -> Update Store
 @callback(
@@ -105,72 +204,6 @@ def update_store(values, ids):
         data[show_id][cat] = int(val)
         
     return data
-
-# Callback 2: Store -> Update Price Display
-@callback(
-    [Output("cart-details", "children"),
-     Output("total-price", "children")],
-    [Input("cart-store", "data")]
-)
-def calculate_price_from_store(ticket_data):
-    if not ticket_data:
-        return html.P("Laden...", className="text-muted"), "€0"
-
-    # Logic: Per-type chronological discount
-    # We track the "max previous" attendees for each category separately.
-    max_prev_large = 0
-    max_prev_small = 0
-    
-    total_cost = 0
-    line_items = []
-    
-    # Ensure chronological order
-    show_ids = ['s1', 's2', 's3'] 
-    
-    for sid in show_ids:
-        # Find the show object for name reference
-        show = next((s for s in SHOWS if s['id'] == sid), None)
-        if not show: continue
-        
-        s_data = ticket_data.get(sid, {'large': 0, 'small': 0})
-        n_large = int(s_data.get('large', 0))
-        n_small = int(s_data.get('small', 0))
-        
-        # Calculate Large
-        disc_slots_large = max_prev_large
-        n_large_disc = min(n_large, disc_slots_large)
-        n_large_full = n_large - n_large_disc
-        
-        cost_large = (n_large_full * PRICES['large']) + (n_large_disc * PRICES['discount'])
-        
-        # Calculate Small
-        disc_slots_small = max_prev_small
-        n_small_disc = min(n_small, disc_slots_small)
-        n_small_full = n_small - n_small_disc
-        
-        cost_small = (n_small_full * PRICES['small']) + (n_small_disc * PRICES['discount'])
-        
-        # Update Total
-        total_cost += cost_large + cost_small
-        
-        # Update History (Max of previous or current)
-        max_prev_large = max(max_prev_large, n_large)
-        max_prev_small = max(max_prev_small, n_small)
-        
-        # Build String
-        if n_large + n_small > 0:
-            details = []
-            if n_large_full > 0: details.append(f"{n_large_full}x Groot (€{n_large_full * PRICES['large']})")
-            if n_large_disc > 0: details.append(f"{n_large_disc}x Groot (Korting: €{n_large_disc * PRICES['discount']})")
-            if n_small_full > 0: details.append(f"{n_small_full}x Klein (€{n_small_full * PRICES['small']})")
-            if n_small_disc > 0: details.append(f"{n_small_disc}x Klein (Korting: €{n_small_disc * PRICES['discount']})")
-            
-            line_items.append(html.P(f"{show['name']}: {', '.join(details)}"))
-
-    if not line_items:
-        line_items.append(html.P("Nog geen tickets geselecteerd.", className="text-muted"))
-
-    return line_items, f"TOTAAL: €{total_cost}"
 
 @callback(
     Output({"type": "ticket-input", "show": MATCH, "category": MATCH}, "value"),
@@ -198,10 +231,109 @@ def update_input_value(n_dec, n_inc, current_val):
         
     return dash.no_update
 
+
+# Callback 2: Store -> Update Price Display
+@callback(
+    [Output("cart-details", "children"),
+     Output("total-price", "children")],
+    [Input("cart-store", "data"),
+     Input("uitpas-store", "data")]
+)
+def calculate_price_from_store(ticket_data, uitpas_cards):
+    if not ticket_data:
+        return html.P("Laden...", className="text-muted"), "€0"
+
+    # Logic: Per-type chronological discount
+    max_prev_large = 0
+    max_prev_small = 0
+    
+    total_cost = 0
+    line_items = []
+    
+    # Ensure chronological order
+    show_ids = ['s1', 's2', 's3'] 
+    
+    # Copy ticket data to track which ones are "covered" by UitPas
+    # Structure: {'s1': {'large': N, 'small': N}, ...}
+    # We will decrement counts as we apply UitPas discounts
+    
+    # IMPORTANT: One UitPas applies to 1 ticket of [Type] in EVERY show.
+    # So we don't 'decrement' the UitPas card, checking it for each show.
+    
+    for sid in show_ids:
+        show = next((s for s in SHOWS if s['id'] == sid), None)
+        if not show: continue
+        
+        s_data = ticket_data.get(sid, {'large': 0, 'small': 0})
+        n_large = int(s_data.get('large', 0))
+        n_small = int(s_data.get('small', 0))
+        
+        # 1. Apply UitPas Discounts First
+        # Count how many UitCards of each type we have
+        uitpas_large_count = sum(1 for c in uitpas_cards if c['type'] == 'large')
+        uitpas_small_count = sum(1 for c in uitpas_cards if c['type'] == 'small')
+        
+        # Calculate UitPas tickets for this show
+        n_large_uitpas = min(n_large, uitpas_large_count)
+        n_small_uitpas = min(n_small, uitpas_small_count)
+        
+        # Remaining tickets for normal pricing flow
+        rem_large = n_large - n_large_uitpas
+        rem_small = n_small - n_small_uitpas
+        
+        # Cost for UitPas is 20% of full price (80% discount)
+        # Note: Base price or 'discount' price? Usually base price * 0.2
+        # Plan says "80% reduction"
+        cost_uitpas_large = n_large_uitpas * (PRICES['large'] * 0.2)
+        cost_uitpas_small = n_small_uitpas * (PRICES['small'] * 0.2)
+        
+        # 2. Apply Normal Dynamic Pricing to REMAINING tickets
+        # Calculate Large Remainder
+        disc_slots_large = max_prev_large
+        n_large_disc = min(rem_large, disc_slots_large)
+        n_large_full = rem_large - n_large_disc
+        
+        cost_large_rem = (n_large_full * PRICES['large']) + (n_large_disc * PRICES['discount'])
+        
+        # Calculate Small Remainder
+        disc_slots_small = max_prev_small
+        n_small_disc = min(rem_small, disc_slots_small)
+        n_small_full = rem_small - n_small_disc
+        
+        cost_small_rem = (n_small_full * PRICES['small']) + (n_small_disc * PRICES['discount'])
+        
+        # Update Total
+        total_cost += cost_uitpas_large + cost_uitpas_small + cost_large_rem + cost_small_rem
+        
+        # Update History for next show
+        # Do we count UitPas tickets towards the "bulk discount" for subsequent shows?
+        # Probably yes, "Total sold" usually counts all.
+        max_prev_large = max(max_prev_large, n_large)
+        max_prev_small = max(max_prev_small, n_small)
+        
+        # Build String
+        if n_large + n_small > 0:
+            details = []
+            if n_large_uitpas > 0: details.append(f"{n_large_uitpas}x Groot (UitPas: €{PRICES['large']*0.2:.2f})")
+            if n_large_full > 0: details.append(f"{n_large_full}x Groot (€{PRICES['large']})")
+            if n_large_disc > 0: details.append(f"{n_large_disc}x Groot (Showkorting: €{PRICES['discount']})")
+            
+            if n_small_uitpas > 0: details.append(f"{n_small_uitpas}x Klein (UitPas: €{PRICES['small']*0.2:.2f})")
+            if n_small_full > 0: details.append(f"{n_small_full}x Klein (€{PRICES['small']})")
+            if n_small_disc > 0: details.append(f"{n_small_disc}x Klein (Showkorting: €{PRICES['discount']})")
+            
+            line_items.append(html.P(f"{show['name']}: {', '.join(details)}"))
+
+    if not line_items:
+        line_items.append(html.P("Nog geen tickets geselecteerd.", className="text-muted"))
+
+    return line_items, f"TOTAAL: €{total_cost:,.2f}"
+
+
 # Client-side callback for Payment
 dash.clientside_callback(
     """
-    function(n_clicks, cart_data) {
+    function(n_clicks, cart_data, uitpas_data) {
         if (!n_clicks || n_clicks === 0) {
             return window.dash_clientside.no_update;
         }
@@ -221,7 +353,13 @@ dash.clientside_callback(
             return "Winkelmandje is leeg!";
         }
 
-        console.log("Initiating payment...", cart_data);
+        // Combine data
+        var payload = {
+            cart: cart_data,
+            uitpas: uitpas_data || []
+        };
+
+        console.log("Initiating payment...", payload);
         
         fetch('/config')
             .then((result) => result.json())
@@ -233,7 +371,7 @@ dash.clientside_callback(
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(cart_data),
+                    body: JSON.stringify(payload),
                 })
                 .then((result) => result.json())
                 .then((session) => {
@@ -260,6 +398,7 @@ dash.clientside_callback(
     Output("pay-status", "children"),
     Input("pay-btn", "n_clicks"),
     State("cart-store", "data"),
+    State("uitpas-store", "data"),
     prevent_initial_call=True
 )
 
