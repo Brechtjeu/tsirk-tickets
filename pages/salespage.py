@@ -3,8 +3,15 @@ from dash import html, dcc, callback, Input, Output, State, ALL, MATCH
 import dash_bootstrap_components as dbc
 import json
 import copy
+import os
+from dotenv import load_dotenv
+from db import get_sold_count
 
 dash.register_page(__name__, path='/')
+
+# Configuration
+load_dotenv()
+MAX_TICKETS = int(os.getenv('MAX_TICKETS_PER_SHOW', 250))
 
 # Data Configuration
 SHOWS = [
@@ -37,6 +44,8 @@ def create_show_card(show):
             html.H5([html.I(className="bi bi-calendar"), f" {show['date']}"], className="text-center"),
             html.H4(show['time'], className="text-center mb-4"),
             
+            html.Div(id={"type": "show-status", "show": show["id"]}, className="text-center mb-3 fw-bold"),
+            
             # Inputs
             html.Label("GROTE UITVINDERS (>12j)", className="small"),
             create_counter_input(show["id"], "large"),
@@ -48,6 +57,8 @@ def create_show_card(show):
     )
 
 layout = dbc.Container([
+    dcc.Interval(id="status-interval", interval=10*1000, n_intervals=0), # Poll every 10s
+    
     html.Div([
         html.H4("'T GETOUW - 28 EN 29 MAART 2026", className="text-center mb-4 text-white-50"),
     ]),
@@ -118,8 +129,56 @@ layout = dbc.Container([
                 html.Div(id="pay-status", className="mt-2 text-center text-warning")
             ], width=12, md=4, className="d-flex flex-column justify-content-center")
         ])
-    ], className="container pb-5")
+    ], className="container pb-5"),
+    
+    # Limit Reached Modal
+    dbc.Modal(
+        [
+            dbc.ModalHeader(dbc.ModalTitle("Dat ging snel!"), close_button=True),
+            dbc.ModalBody("Deze show is helaas bijna uitverkocht of er zijn niet genoeg tickets meer beschikbaar voor jouw selectie.", id="limit-modal-body"),
+            dbc.ModalFooter(
+                dbc.Button("Sluiten", id="close-limit-modal", className="ms-auto", n_clicks=0)
+            ),
+        ],
+        id="limit-modal",
+        is_open=False,
+    ),
 ])
+
+# Callback: Update Status Text
+@callback(
+    Output({"type": "show-status", "show": MATCH}, "children"),
+    [Input("status-interval", "n_intervals")]
+)
+def update_show_status(n):
+    # This matches all, but we need context to know which one caused it? 
+    # Actually, pattern match OUTPUT works if we match inputs.
+    # But interval is unique. We need ALL output and loop?
+    # Dash pattern matching: if Input is not matched, it calls for all? No.
+    # We must use ALL outputs and single input.
+    return dash.no_update
+
+# Real callback for status updates (ALL)
+@callback(
+    Output({"type": "show-status", "show": ALL}, "children"),
+    [Input("status-interval", "n_intervals")]
+)
+def update_all_show_statuses(n):
+    outputs = []
+    # Context order matches SHOWS order usually if rendered that way
+    # But safe way is to iterate triggers? No, we just iterate SHOWS mapping.
+    # We need to map outputs to IDs.
+    # Since we create them in loop `for s in SHOWS`, the outputs list matches that order.
+    
+    for s in SHOWS:
+        count = get_sold_count(s['id'])
+        if count >= MAX_TICKETS:
+            outputs.append(html.Span("UITVERKOCHT", className="text-danger border border-danger p-1 rounded"))
+        elif count >= MAX_TICKETS - 10:
+             outputs.append(html.Span(f"Nog slechts {MAX_TICKETS - count} tickets!", className="text-warning"))
+        else:
+            outputs.append("")
+    return outputs
 
 # Callback: Add/Remove UitPas
 @callback(
@@ -145,22 +204,12 @@ def manage_uitpas(n_add, n_remove, number, ticket_type, current_data):
         
         # Check duplicate
         if any(c['number'] == number for c in current_data):
-             return dash.no_update, dash.no_update, "Dit nummer is al toegevoegd"
+              return dash.no_update, dash.no_update, "Dit nummer is al toegevoegd"
 
         new_data = current_data + [{"number": number, "type": ticket_type}]
         return new_data, "", ""
     
     elif "btn-remove-uitpas" in trigger_id:
-        # trigger_id is JSON string like {"index":0,"type":"btn-remove-uitpas"}
-        # But we rely on dash context logic usually. 
-        # Since we use pattern matching, we can find which index triggered.
-        # But for list removal, it's safer to reconstruct.
-        
-        # Simple approach: find the one that wasn't None? 
-        # n_remove is a list of n_clicks. Find index of non-zero/changed?
-        # Actually easier: simpler to just use the index from the ID if possible, 
-        # but Dash gives us 'index' in the dict.
-        
         trigger_obj = json.loads(trigger_id)
         idx_to_remove = trigger_obj['index']
         
@@ -206,30 +255,63 @@ def update_store(values, ids):
     return data
 
 @callback(
-    Output({"type": "ticket-input", "show": MATCH, "category": MATCH}, "value"),
+    [Output({"type": "ticket-input", "show": MATCH, "category": MATCH}, "value"),
+     Output("limit-modal", "is_open"),
+     Output("limit-modal-body", "children")],
     [Input({"type": "btn-dec", "show": MATCH, "category": MATCH}, "n_clicks"),
-     Input({"type": "btn-inc", "show": MATCH, "category": MATCH}, "n_clicks")],
-    [State({"type": "ticket-input", "show": MATCH, "category": MATCH}, "value")],
+     Input({"type": "btn-inc", "show": MATCH, "category": MATCH}, "n_clicks"),
+     Input("close-limit-modal", "n_clicks")],
+    [State({"type": "ticket-input", "show": MATCH, "category": MATCH}, "value"),
+     State({"type": "ticket-input", "show": MATCH, "category": MATCH}, "id")],
     prevent_initial_call=True
 )
-def update_input_value(n_dec, n_inc, current_val):
+def update_input_value(n_dec, n_inc, n_close, current_val, id_map):
     ctx = dash.callback_context
-    if not ctx.triggered:
-        return dash.no_update
+    if not ctx.triggered: return dash.no_update, dash.no_update, dash.no_update
         
-    # parse the trigger to see which button was pressed
-    trigger_id = json.loads(ctx.triggered[0]['prop_id'].split('.')[0])
+    trigger_id_str = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    # Handle Modal Close
+    if trigger_id_str == "close-limit-modal":
+        return dash.no_update, False, dash.no_update
+        
+    trigger_id = json.loads(trigger_id_str)
     button_type = trigger_id['type']
     
     if current_val is None:
         current_val = 0
         
     if button_type == "btn-dec":
-        return max(0, current_val - 1)
-    elif button_type == "btn-inc":
-        return current_val + 1
+        return max(0, current_val - 1), dash.no_update, dash.no_update
         
-    return dash.no_update
+    elif button_type == "btn-inc":
+        # CHECK LIMIT
+        show_id = id_map['show']
+        sold_count = get_sold_count(show_id)
+        
+        # We need to know current tickets in cart for THIS show to calculate total requested?
+        # Ideally yes, but here we only have the 'current_val' of THIS input.
+        # But wait, we also have other category input for same show.
+        # This callback is isolated (MATCH). It doesn't know about the OTHER input for the same show.
+        # This is a limitation of MATCH.
+        # However, we can be conservative: Check if sold_count >= MAX.
+        # If sold_count + 1 (this increment) > MAX? 
+        # But we don't know total requested in cart.
+        
+        # Simpler check: If sold_count >= MAX, we definitely can't add.
+        if sold_count >= MAX_TICKETS:
+             return dash.no_update, True, "Deze show is helaas uitverkocht."
+             
+        # Ideally we should check (sold + current items in cart + 1) > MAX.
+        # Since we can't easily access the other input value here without ALL state...
+        # Let's trust backend for the strict check, and here just prevent adding if strictly sold out.
+        # OR: We can fetch cart-store?
+        # But circular dependency risk if we output to input? No.
+        # Let's just check current DB count.
+             
+        return current_val + 1, dash.no_update, dash.no_update
+        
+    return dash.no_update, dash.no_update, dash.no_update
 
 
 # Callback 2: Store -> Update Price Display
@@ -253,13 +335,6 @@ def calculate_price_from_store(ticket_data, uitpas_cards):
     # Ensure chronological order
     show_ids = ['s1', 's2', 's3'] 
     
-    # Copy ticket data to track which ones are "covered" by UitPas
-    # Structure: {'s1': {'large': N, 'small': N}, ...}
-    # We will decrement counts as we apply UitPas discounts
-    
-    # IMPORTANT: One UitPas applies to 1 ticket of [Type] in EVERY show.
-    # So we don't 'decrement' the UitPas card, checking it for each show.
-    
     for sid in show_ids:
         show = next((s for s in SHOWS if s['id'] == sid), None)
         if not show: continue
@@ -282,8 +357,6 @@ def calculate_price_from_store(ticket_data, uitpas_cards):
         rem_small = n_small - n_small_uitpas
         
         # Cost for UitPas is 20% of full price (80% discount)
-        # Note: Base price or 'discount' price? Usually base price * 0.2
-        # Plan says "80% reduction"
         cost_uitpas_large = n_large_uitpas * (PRICES['large'] * 0.2)
         cost_uitpas_small = n_small_uitpas * (PRICES['small'] * 0.2)
         
@@ -306,8 +379,6 @@ def calculate_price_from_store(ticket_data, uitpas_cards):
         total_cost += cost_uitpas_large + cost_uitpas_small + cost_large_rem + cost_small_rem
         
         # Update History for next show
-        # Do we count UitPas tickets towards the "bulk discount" for subsequent shows?
-        # Probably yes, "Total sold" usually counts all.
         max_prev_large = max(max_prev_large, n_large)
         max_prev_small = max(max_prev_small, n_small)
         
@@ -323,7 +394,7 @@ def calculate_price_from_store(ticket_data, uitpas_cards):
             if n_small_disc > 0: details.append(f"{n_small_disc}x Klein (Showkorting: €{PRICES['discount']})")
             
             line_items.append(html.P(f"{show['name']}: {', '.join(details)}"))
-
+    
     if not line_items:
         line_items.append(html.P("Nog geen tickets geselecteerd.", className="text-muted"))
 

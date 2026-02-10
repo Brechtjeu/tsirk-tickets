@@ -64,6 +64,17 @@ def register_stripe_routes(server):
                 n_large = int(s_data.get('large', 0))
                 n_small = int(s_data.get('small', 0))
                 
+                if n_large + n_small > 0:
+                    from db import get_sold_count
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                    MAX_TICKETS = int(os.getenv('MAX_TICKETS_PER_SHOW', 250))
+                    current_sold = get_sold_count(sid)
+                    
+                    if current_sold + n_large + n_small > MAX_TICKETS:
+                        logger.warning(f"Rejecting checkout for {show['name']}: {current_sold} sold + {n_large+n_small} requested > {MAX_TICKETS}")
+                        return jsonify({'error': f"Helaas, {show['name']} is uitverkocht of er zijn niet genoeg tickets meer."}), 400
+                
                 # --- Calculates & UitPas Logic ---
                 # UitPas logic: 1 Card discounts 1 ticket of [type] in THIS show.
                 # Find matching cards

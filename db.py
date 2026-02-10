@@ -48,3 +48,25 @@ def init_db(app):
 
     with app.app_context():
         db.create_all()
+
+def get_sold_count(show_id):
+    """
+    Returns the number of sold tickets for a given show_id (s1, s2, s3).
+    """
+    # Mapping show_id to description string used in AccessCode.type
+    show_map = {
+        's1': 'SHOW 1',
+        's2': 'SHOW 2',
+        's3': 'SHOW 3'
+    }
+    search_str = show_map.get(show_id)
+    if not search_str: return 0
+
+    # Count valid (paid) tickets
+    # We join with CheckoutSession to ensure payment_status is paid
+    # Note: access_codes has a foreign key to checkout_session
+    query = db.session.query(AccessCode).join(CheckoutSession).filter(
+        CheckoutSession.payment_status == 'paid',
+        AccessCode.type.contains(search_str)
+    )
+    return query.count()
