@@ -244,26 +244,18 @@ def update_store(values, ids):
     return data
 
 @callback(
-    [Output({"type": "ticket-input", "show": MATCH, "category": MATCH}, "value"),
-     Output("limit-modal", "is_open"),
-     Output("limit-modal-body", "children")],
+    Output({"type": "ticket-input", "show": MATCH, "category": MATCH}, "value"),
     [Input({"type": "btn-dec", "show": MATCH, "category": MATCH}, "n_clicks"),
-     Input({"type": "btn-inc", "show": MATCH, "category": MATCH}, "n_clicks"),
-     Input("close-limit-modal", "n_clicks")],
+     Input({"type": "btn-inc", "show": MATCH, "category": MATCH}, "n_clicks")],
     [State({"type": "ticket-input", "show": MATCH, "category": MATCH}, "value"),
      State({"type": "ticket-input", "show": MATCH, "category": MATCH}, "id")],
     prevent_initial_call=True
 )
-def update_input_value(n_dec, n_inc, n_close, current_val, id_map):
+def update_input_value(n_dec, n_inc, current_val, id_map):
     ctx = dash.callback_context
-    if not ctx.triggered: return dash.no_update, dash.no_update, dash.no_update
+    if not ctx.triggered: return dash.no_update
         
     trigger_id_str = ctx.triggered[0]['prop_id'].split('.')[0]
-    
-    # Handle Modal Close
-    if trigger_id_str == "close-limit-modal":
-        return dash.no_update, False, dash.no_update
-        
     trigger_id = json.loads(trigger_id_str)
     button_type = trigger_id['type']
     
@@ -271,36 +263,55 @@ def update_input_value(n_dec, n_inc, n_close, current_val, id_map):
         current_val = 0
         
     if button_type == "btn-dec":
-        return max(0, current_val - 1), dash.no_update, dash.no_update
+        return max(0, current_val - 1)
         
     elif button_type == "btn-inc":
-        # CHECK LIMIT
+        # Check limit only to prevent increment
         show_id = id_map['show']
         sold_count = get_sold_count(show_id)
         
-        # We need to know current tickets in cart for THIS show to calculate total requested?
-        # Ideally yes, but here we only have the 'current_val' of THIS input.
-        # But wait, we also have other category input for same show.
-        # This callback is isolated (MATCH). It doesn't know about the OTHER input for the same show.
-        # This is a limitation of MATCH.
-        # However, we can be conservative: Check if sold_count >= MAX.
-        # If sold_count + 1 (this increment) > MAX? 
-        # But we don't know total requested in cart.
-        
-        # Simpler check: If sold_count >= MAX, we definitely can't add.
         if sold_count >= MAX_TICKETS:
-             return dash.no_update, True, "Deze show is helaas uitverkocht."
+             return dash.no_update
              
-        # Ideally we should check (sold + current items in cart + 1) > MAX.
-        # Since we can't easily access the other input value here without ALL state...
-        # Let's trust backend for the strict check, and here just prevent adding if strictly sold out.
-        # OR: We can fetch cart-store?
-        # But circular dependency risk if we output to input? No.
-        # Let's just check current DB count.
-             
-        return current_val + 1, dash.no_update, dash.no_update
+        return current_val + 1
         
-    return dash.no_update, dash.no_update, dash.no_update
+    return dash.no_update
+
+
+@callback(
+    [Output("limit-modal", "is_open"),
+     Output("limit-modal-body", "children")],
+    [Input({"type": "btn-inc", "show": ALL, "category": ALL}, "n_clicks"),
+     Input("close-limit-modal", "n_clicks")],
+    [State({"type": "btn-inc", "show": ALL, "category": ALL}, "id")],
+    prevent_initial_call=True
+)
+def handle_limit_modal(n_incs, n_close, ids):
+    ctx = dash.callback_context
+    if not ctx.triggered: return dash.no_update, dash.no_update
+    
+    prop_id = ctx.triggered[0]['prop_id']
+    
+    if "close-limit-modal" in prop_id:
+        return False, dash.no_update
+        
+    # Check if it was an increment button
+    if "btn-inc" in prop_id:
+        # Parse which button
+        # prop_id is like '{"category":"large","show":"s1","type":"btn-inc"}.n_clicks'
+        try:
+            dict_str = prop_id.split('.n_clicks')[0]
+            # Dash escapes quotes in prop_id sometimes? No, standard JSON usually.
+            trigger_id = json.loads(dict_str)
+            show_id = trigger_id['show']
+            
+            sold_count = get_sold_count(show_id)
+            if sold_count >= MAX_TICKETS:
+                return True, "Deze show is helaas uitverkocht of er zijn niet genoeg tickets meer beschikbaar voor jouw selectie."
+        except:
+            pass
+            
+    return dash.no_update, dash.no_update
 
 
 # Callback 2: Store -> Update Price Display
