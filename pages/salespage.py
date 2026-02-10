@@ -145,18 +145,7 @@ layout = dbc.Container([
     ),
 ])
 
-# Callback: Update Status Text
-@callback(
-    Output({"type": "show-status", "show": MATCH}, "children"),
-    [Input("status-interval", "n_intervals")]
-)
-def update_show_status(n):
-    # This matches all, but we need context to know which one caused it? 
-    # Actually, pattern match OUTPUT works if we match inputs.
-    # But interval is unique. We need ALL output and loop?
-    # Dash pattern matching: if Input is not matched, it calls for all? No.
-    # We must use ALL outputs and single input.
-    return dash.no_update
+
 
 # Real callback for status updates (ALL)
 @callback(
