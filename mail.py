@@ -274,7 +274,7 @@ def send_admin_notification(session_id, customer_email, uitpas_items):
     api_instance = brevo_python.TransactionalEmailsApi(brevo_python.ApiClient(configuration))
     subject = f"ACTION REQUIRED: UitPas Tickets Verification ({session_id[:8]})"
     sender = {"name":"'t Sirk Sales","email":"noreply@tsirk.be"}
-    to = [{"email":"show@tsirk.be", "name":"Ticket Admin"}]
+    to = [{"email":"info@tsirk.be", "name":"Ticket Admin"}]
     
     items_html = ""
     for item in uitpas_items:
