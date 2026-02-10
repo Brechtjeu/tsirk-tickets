@@ -76,7 +76,7 @@ layout = dbc.Container([
     html.Div([
         html.Hr(className="border-gold"),
         html.H3("UITPAS MET KANSENTARIEF", className="text-gold mb-3"),
-        html.P("Heb je een UiTPAS met kansentarief? Dan krijg je korting op je ticket. Opgelet: deze tickets zijn enkel geldig op vertoon van een geldige UiTPAS met kansentarief aan de kassa.", className="text-white small mb-3"),
+        html.P(["Heb je een UiTPAS met kansentarief? Dan krijg je korting op je ticket. Opgelet: deze tickets zijn enkel geldig op vertoon van een geldige UiTPAS", html.B(" met kansentarief "), "aan de kassa."], className="text-white small mb-3"),
         
         dbc.Row([
             dbc.Col([
