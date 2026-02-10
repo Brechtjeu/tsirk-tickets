@@ -409,7 +409,18 @@ dash.clientside_callback(
             return window.dash_clientside.no_update;
         }
         
-        // Basic Validation: Check if cart is empty
+        // DOM Elements
+        const btn = document.getElementById("pay-btn");
+        const status = document.getElementById("pay-status");
+
+        // UI Feedback: Start
+        if (btn) btn.disabled = true;
+        if (status) {
+            status.innerText = "Momentje, we controleren de beschikbaarheid...";
+            status.className = "mt-2 text-center text-warning";
+        }
+        
+        // Basic Validation
         var hasItems = false;
         if (cart_data) {
             for (var show in cart_data) {
@@ -421,10 +432,15 @@ dash.clientside_callback(
         }
         
         if (!hasItems) {
-            return "Winkelmandje is leeg!";
+            if (btn) btn.disabled = false;
+            if (status) {
+                status.innerText = "Winkelmandje is leeg!";
+                status.className = "mt-2 text-center text-danger";
+            }
+            return window.dash_clientside.no_update;
         }
 
-        // Combine data
+        // Payload
         var payload = {
             cart: cart_data,
             uitpas: uitpas_data || []
@@ -439,31 +455,51 @@ dash.clientside_callback(
                 
                 fetch('/create-checkout-session', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 })
                 .then((result) => result.json())
                 .then((session) => {
                     console.log("Session created:", session);
+                    
                     if (session.error) {
                          console.error(session.error);
-                         return "Error: " + session.error;
+                         // UI Feedback: Error
+                         if (btn) btn.disabled = false;
+                         if (status) {
+                             status.innerText = session.error; // Show backend error message
+                             status.className = "mt-2 text-center text-danger fw-bold";
+                         }
+                         return;
                     }
+                    
+                    // UI Feedback: Success / Redirecting
+                    if (status) status.innerText = "Redirecting naar betaalpagina...";
                     return stripe.redirectToCheckout({ sessionId: session.sessionId });
                 })
                 .then((res) => {
                     if (res && res.error) {
                         console.error(res.error);
+                        // Stripe Redirect Error
+                        if (btn) btn.disabled = false;
+                        if (status) {
+                             status.innerText = "Fout bij doorverwijzen: " + res.error.message;
+                             status.className = "mt-2 text-center text-danger";
+                        }
                     }
                 })
                 .catch((err) => {
                     console.error("Error:", err);
+                    // Network/Fetch Error
+                    if (btn) btn.disabled = false;
+                    if (status) {
+                         status.innerText = "Er is een fout opgetreden. Probeer het opnieuw.";
+                         status.className = "mt-2 text-center text-danger";
+                    }
                 });
             });
             
-        return "Redirecting naar betaalpagina...";
+        return window.dash_clientside.no_update;
     }
     """,
     Output("pay-status", "children"),
